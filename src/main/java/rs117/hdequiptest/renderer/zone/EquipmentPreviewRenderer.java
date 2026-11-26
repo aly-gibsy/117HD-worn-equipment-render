@@ -106,9 +106,10 @@ public class EquipmentPreviewRenderer {
 	private int fboWidth;
 	private int fboHeight;
 
-	/** The vanilla model widget currently hidden by us, only touched on the client thread. */
+	/** The vanilla model widget currently blanked by us, only touched on the client thread. */
 	@Nullable
-	private Widget hiddenWidget;
+	private Widget blankedWidget;
+	private int blankedModelType;
 	/** Canvas-space bounds of the preview, or null when the interface isn't open. */
 	@Nullable
 	private volatile Rectangle previewBounds;
@@ -198,9 +199,11 @@ public class EquipmentPreviewRenderer {
 
 	@Subscribe
 	public void onBeforeRender(BeforeRender event) {
-		// Hide the vanilla model before the client draws the interface, so it never shows under ours
+		// Blank the vanilla model before the client draws the interface, so it never shows under ours.
+		// The widget is blanked rather than hidden, since the client stops updating a hidden widget's
+		// on-screen position, which left the preview drawn in the wrong place.
 		Widget widget = config.hdEquipmentPreview() ? findPreviewWidget() : null;
-		if (widget != hiddenWidget)
+		if (widget != blankedWidget)
 			restoreVanillaWidget();
 
 		if (widget == null) {
@@ -208,15 +211,19 @@ public class EquipmentPreviewRenderer {
 			return;
 		}
 
-		widget.setHidden(true);
-		hiddenWidget = widget;
+		if (widget.getModelType() != WidgetModelType.NULL) {
+			// Scripts may set the model again when equipment changes, so keep the latest type to restore
+			blankedModelType = widget.getModelType();
+			widget.setModelType(WidgetModelType.NULL);
+		}
+		blankedWidget = widget;
 		previewBounds = widget.getBounds();
 	}
 
 	private void restoreVanillaWidget() {
-		if (hiddenWidget != null)
-			hiddenWidget.setHidden(false);
-		hiddenWidget = null;
+		if (blankedWidget != null)
+			blankedWidget.setModelType(blankedModelType);
+		blankedWidget = null;
 	}
 
 	@Nullable
@@ -224,14 +231,23 @@ public class EquipmentPreviewRenderer {
 		Widget root = client.getWidget(InterfaceID.Equipment.UNIVERSE);
 		if (root == null || root.isHidden())
 			return null;
+		// Once blanked, the widget no longer looks like a player model, so keep using it while it's shown
+		if (blankedWidget != null && !blankedWidget.isHidden() && isDescendant(blankedWidget, root))
+			return blankedWidget;
 		return findPlayerModel(root);
+	}
+
+	private static boolean isDescendant(Widget widget, Widget ancestor) {
+		for (Widget w = widget; w != null; w = w.getParent())
+			if (w.getId() == ancestor.getId())
+				return true;
+		return false;
 	}
 
 	@Nullable
 	private static Widget findPlayerModel(Widget widget) {
 		if (widget.getType() == WidgetType.MODEL && isPlayerModelType(widget.getModelType())) {
-			Widget parent = widget.getParent();
-			return parent == null || !parent.isHidden() ? widget : null;
+			return widget.isHidden() ? null : widget;
 		}
 
 		for (Widget[] children : new Widget[][] {
