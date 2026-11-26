@@ -376,6 +376,7 @@ public class HdPlugin extends Plugin {
 	@Getter
 	@Nullable
 	private int[] uiResolution;
+	@Getter
 	private final int[] actualUiResolution = { 0, 0 }; // Includes stretched mode and DPI scaling
 	private final GLBuffer[] pboUi = new GLBuffer[3];
 	private int texUi;

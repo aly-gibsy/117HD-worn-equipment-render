@@ -1032,12 +1032,68 @@ public interface HdPluginConfig extends Config
 	default boolean recolorGroundObjects() { return true; }
 
 
+	/*====== Equipment preview settings ======*/
+
+	@ConfigSection(
+		name = "Equipment preview",
+		description = "Render the character preview in the Equip Your Character interface with 117 HD",
+		position = 5,
+		closedByDefault = true
+	)
+	String equipmentPreviewSettings = "equipmentPreviewSettings";
+
+	String KEY_HD_EQUIPMENT_PREVIEW = "hdEquipmentPreview";
+	@ConfigItem(
+		keyName = KEY_HD_EQUIPMENT_PREVIEW,
+		name = "HD equipment preview",
+		description =
+			"Replace the character preview in the Equip Your Character interface with one rendered by 117 HD,<br>" +
+			"lit by the sun, ambient and point lights where you are standing. Drag the preview to rotate it.",
+		position = 0,
+		section = equipmentPreviewSettings
+	)
+	default boolean hdEquipmentPreview() {
+		return true;
+	}
+	@ConfigItem(keyName = KEY_HD_EQUIPMENT_PREVIEW, name = "", description = "")
+	void setHdEquipmentPreview(boolean enabled);
+
+	String KEY_EQUIPMENT_PREVIEW_SHADOWS = "equipmentPreviewShadows";
+	@ConfigItem(
+		keyName = KEY_EQUIPMENT_PREVIEW_SHADOWS,
+		name = "Scene shadows",
+		description =
+			"Let shadows from the scene fall on the preview.<br>" +
+			"The shadow map is built from your character as it stands in the world, so the preview<br>" +
+			"may show its own shadow in the wrong place when it is rotated away from that pose.",
+		position = 1,
+		section = equipmentPreviewSettings
+	)
+	default boolean equipmentPreviewShadows() {
+		return false;
+	}
+
+	String KEY_EQUIPMENT_PREVIEW_ZOOM = "equipmentPreviewZoom";
+	@Range(min = 50, max = 200)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = KEY_EQUIPMENT_PREVIEW_ZOOM,
+		name = "Zoom",
+		description = "How large the character appears in the preview.",
+		position = 2,
+		section = equipmentPreviewSettings
+	)
+	default int equipmentPreviewZoom() {
+		return 100;
+	}
+
+
 	/*====== Miscellaneous settings ======*/
 
 	@ConfigSection(
 		name = "Miscellaneous",
 		description = "Miscellaneous settings",
-		position = 5,
+		position = 6,
 		closedByDefault = true
 	)
 	String miscellaneousSettings = "miscellaneousSettings";
@@ -1200,7 +1256,7 @@ public interface HdPluginConfig extends Config
 	@ConfigSection(
 		name = "Legacy",
 		description = "Legacy options. If you dislike a change, you might find an option to change it back here.",
-		position = 6,
+		position = 7,
 		closedByDefault = true
 	)
 	String legacySettings = "legacySettings";
@@ -1385,7 +1441,7 @@ public interface HdPluginConfig extends Config
 	@ConfigSection(
 		name = "Experimental",
 		description = "Experimental features. If you're experiencing issues, you should consider disabling these.",
-		position = 7,
+		position = 8,
 		closedByDefault = true
 	)
 	String experimentalSettings = "experimentalSettings";
@@ -1453,7 +1509,7 @@ public interface HdPluginConfig extends Config
 	@ConfigSection(
 		name = "Technical",
 		description = "Technical settings. Leave these on their default settings unless you know what you're doing.",
-		position = 8,
+		position = 9,
 		closedByDefault = true
 	)
 	String technicalSettings = "technicalSettings";

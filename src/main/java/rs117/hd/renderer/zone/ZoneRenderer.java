@@ -100,6 +100,7 @@ public class ZoneRenderer implements Renderer {
 
 	private static int TEXTURE_UNIT_COUNT = HdPlugin.TEXTURE_UNIT_COUNT;
 	public static final int TEXTURE_UNIT_TEXTURED_FACES = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
+	public static final int TEXTURE_UNIT_EQUIPMENT_PREVIEW = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 
 	private static int UNIFORM_BLOCK_COUNT = HdPlugin.UNIFORM_BLOCK_COUNT;
 	public static final int UNIFORM_BLOCK_WORLD_VIEWS = UNIFORM_BLOCK_COUNT++;
@@ -160,6 +161,9 @@ public class ZoneRenderer implements Renderer {
 
 	@Inject
 	private JobSystem jobSystem;
+
+	@Inject
+	private EquipmentPreviewRenderer equipmentPreviewRenderer;
 
 	@Inject
 	private UBOWorldViews uboWorldViews;
@@ -228,6 +232,7 @@ public class ZoneRenderer implements Renderer {
 		terrainShadowCmd.setFrameTimer(frameTimer);
 
 		jobSystem.startUp(config.cpuUsageLimit());
+		equipmentPreviewRenderer.initialize();
 		uboWorldViews.initialize(UNIFORM_BLOCK_WORLD_VIEWS);
 		sceneManager.initialize(uboWorldViews);
 		modelStreamingManager.initialize();
@@ -246,6 +251,7 @@ public class ZoneRenderer implements Renderer {
 
 		destroyBuffers();
 		skyRenderer.destroy();
+		equipmentPreviewRenderer.destroy();
 
 		jobSystem.shutDown();
 		modelStreamingManager.destroy();
@@ -341,6 +347,7 @@ public class ZoneRenderer implements Renderer {
 		detailedShadowProgram.compile(includes);
 		terrainShadowProgram.compile(includes);
 		skyRenderer.initializeShaders(includes);
+		equipmentPreviewRenderer.initializeShaders(includes);
 	}
 
 	@Override
@@ -351,6 +358,7 @@ public class ZoneRenderer implements Renderer {
 		detailedShadowProgram.destroy();
 		terrainShadowProgram.destroy();
 		skyRenderer.destroyShaders();
+		equipmentPreviewRenderer.destroyShaders();
 	}
 
 	private void initializeBuffers() {
@@ -1409,6 +1417,8 @@ public class ZoneRenderer implements Renderer {
 			}
 
 			plugin.drawUi(overlayColor);
+			if (shouldRenderScene)
+				drawEquipmentPreview();
 			frameTimer.end(Timer.DRAW_SUBMIT);
 
 			jobSystem.processPendingClientCallbacks();
@@ -1455,6 +1465,16 @@ public class ZoneRenderer implements Renderer {
 			plugin.frame = (plugin.frame + 1) & Integer.MAX_VALUE;
 		} catch (Throwable ex) {
 			plugin.requestPluginStop(String.format("Error in draw(%08X)", overlayColor), ex);
+		}
+	}
+
+	private void drawEquipmentPreview() {
+		try {
+			equipmentPreviewRenderer.render();
+		} catch (Exception ex) {
+			// A broken preview shouldn't take the rest of the plugin down with it
+			log.error("Error while drawing the equipment preview, disabling it:", ex);
+			config.setHdEquipmentPreview(false);
 		}
 	}
 

@@ -87,6 +87,8 @@ public class DynamicModelVAO implements Destructible {
 
 	public boolean hasStagingBuffer() { return vboRender != vboStaging; }
 
+	int getTboTexId() { return tbo.getTexId(); }
+
 	void initialize() {
 		vao = glGenVertexArrays();
 		tbo.initialize(INITIAL_SIZE);
