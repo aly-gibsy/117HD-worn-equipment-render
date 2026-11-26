@@ -70,6 +70,12 @@ public class EquipmentPreviewRenderer {
 		InterfaceID.Equipment.SLOT7, InterfaceID.Equipment.SLOT9, InterfaceID.Equipment.SLOT10,
 		InterfaceID.Equipment.SLOT12, InterfaceID.Equipment.SLOT13
 	};
+	// The topmost and bottommost contents of the panel: the first bonus heading and the weapon speed line
+	private static final int[] VERTICAL_EXTENT_WIDGETS = {
+		InterfaceID.Equipment.STAT_GROUP_TEXT0, InterfaceID.Equipment.SLOT0,
+		InterfaceID.Equipment.ATTACKSPEEDBASE, InterfaceID.Equipment.ATTACKSPEEDACTUAL
+	};
+	private static final int PANEL_PADDING = 6;
 	private static final int[] STAT_TEXTS = {
 		InterfaceID.Equipment.STAT_GROUP_TEXT0, InterfaceID.Equipment.STABATT, InterfaceID.Equipment.SLASHATT,
 		InterfaceID.Equipment.CRUSHATT, InterfaceID.Equipment.STAT_GROUP_TEXT6, InterfaceID.Equipment.STABDEF,
@@ -274,9 +280,27 @@ public class EquipmentPreviewRenderer {
 		if (right == Integer.MAX_VALUE)
 			right = frame.x + frame.width * 2 / 3;
 
-		if (right - left < MIN_PREVIEW_SIZE)
+		// The frame includes the title bar and border, so take the height from the panel's contents instead
+		int top = Integer.MAX_VALUE;
+		int bottom = Integer.MIN_VALUE;
+		for (int id : VERTICAL_EXTENT_WIDGETS) {
+			Rectangle b = boundsOf(id);
+			if (b != null && frame.contains(b)) {
+				top = Math.min(top, b.y);
+				bottom = Math.max(bottom, b.y + b.height);
+			}
+		}
+		if (top == Integer.MAX_VALUE) {
+			top = frame.y;
+			bottom = frame.y + frame.height;
+		} else {
+			top = Math.max(frame.y, top - PANEL_PADDING);
+			bottom = Math.min(frame.y + frame.height, bottom + PANEL_PADDING);
+		}
+
+		if (right - left < MIN_PREVIEW_SIZE || bottom - top < MIN_PREVIEW_SIZE)
 			return null;
-		return new Rectangle(left, frame.y, right - left, frame.height);
+		return new Rectangle(left, top, right - left, bottom - top);
 	}
 
 	/**
