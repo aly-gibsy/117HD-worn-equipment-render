@@ -9,6 +9,25 @@
 
 GPU renderer with a suite of graphical enhancements.
 
+# About this fork: HD equipment preview
+
+This fork renders the character preview in the **Equip Your Character** interface with 117 HD. The character is lit by the sun, ambient light, sky and nearby point lights where you're standing. The game normally draws that preview with its software renderer, which GPU plugins can't reach, so this has to live inside 117 HD itself rather than in a separate plugin.
+
+The fork is named **117hd-equip-test**, with its own package (`rs117.hdequiptest`), config group and cache folder. It can be installed next to 117 HD without touching 117 HD's settings, but only one of the two can be enabled at a time.
+
+- **Build:** `./gradlew jar` produces `build/libs/hd-<version>.jar`. To load it, put the jar in RuneLite's `sideloaded-plugins` folder and start RuneLite with `--developer-mode`.
+- **Settings** (under Equipment preview):
+
+  | Setting | What it does |
+  |---|---|
+  | HD equipment preview | Turns the HD preview on or off |
+  | Scene shadows | Off by default, because the shadow map comes from your in-world pose |
+  | Zoom | Sets how large the character is drawn |
+  | Show preview area | Debug tint of the box the preview is drawn into |
+
+- **Rotating the preview:** drag it left or right.
+- **Where the code lives:** `renderer/zone/EquipmentPreviewRenderer.java`. It works only with the default zone renderer, not the legacy one.
+
 # How to install it
 
 - Download RuneLite from their website: https://runelite.net
