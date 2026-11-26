@@ -9,6 +9,7 @@ import static rs117.hdequiptest.renderer.zone.ZoneRenderer.TEXTURE_UNIT_EQUIPMEN
 public class EquipmentPreviewProgram extends ShaderProgram {
 	private final UniformTexture uniPreviewTexture = addUniformTexture("previewTexture");
 	public final Uniform4f uniTargetRect = addUniform4f("targetRect");
+	public final Uniform4f uniMaskRect = addUniform4f("maskRect");
 
 	public EquipmentPreviewProgram() {
 		super(t -> t
