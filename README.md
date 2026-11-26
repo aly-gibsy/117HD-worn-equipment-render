@@ -21,12 +21,14 @@ The fork is named **117hd-equip-test**, with its own package (`rs117.hdequiptest
   | Setting | What it does |
   |---|---|
   | HD equipment preview | Turns the HD preview on or off |
+  | Pose | What the character does: "As in game" (default), stand, walk, run, or one of 24 emotes. Also set from the dropdown above the preview |
   | Rotate side to side | On by default; turns the character from side to side like the game's preview, pauses while you drag it and resumes 5 seconds after you let go |
   | Scene shadows | Off by default, because the shadow map comes from your in-world pose |
   | Zoom | Sets how large the character is drawn |
   | Show preview area | Debug tint of the box the preview is drawn into |
 
 - **Rotating the preview:** drag it left or right.
+- **Picking a pose:** click the dropdown at the top of the preview. Stand, walk and run use your weapon's own stance. The pose is swapped in only for the preview, by briefly changing your character's pose animation while the preview model is built, so nothing changes in the world. An action animation you're doing in game, such as skilling, still takes priority, as it does in game. If RuneLite's Animation Smoothing plugin is on, the preview blends between animation frames too.
 - **Where the code lives:** `renderer/zone/EquipmentPreviewRenderer.java`. It works only with the default zone renderer, not the legacy one.
 
 # How to install it

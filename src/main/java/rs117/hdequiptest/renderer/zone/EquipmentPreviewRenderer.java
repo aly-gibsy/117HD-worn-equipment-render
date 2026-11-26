@@ -4,6 +4,7 @@ import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.nio.IntBuffer;
+import java.util.function.IntPredicate;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -20,9 +21,11 @@ import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseManager;
+import net.runelite.client.ui.overlay.OverlayManager;
 import org.lwjgl.system.MemoryStack;
 import rs117.hdequiptest.HdEquipTestPlugin;
 import rs117.hdequiptest.HdPluginConfig;
+import rs117.hdequiptest.config.EquipmentPreviewPose;
 import rs117.hdequiptest.opengl.shader.EquipmentPreviewProgram;
 import rs117.hdequiptest.opengl.shader.SceneShaderProgram;
 import rs117.hdequiptest.opengl.shader.ShaderException;
@@ -95,6 +98,12 @@ public class EquipmentPreviewRenderer {
 	private MouseManager mouseManager;
 
 	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private EquipmentPreviewPoseMenu poseMenu;
+
+	@Inject
 	private HdEquipTestPlugin plugin;
 
 	@Inject
@@ -136,6 +145,15 @@ public class EquipmentPreviewRenderer {
 	private volatile Rectangle previewBounds;
 	private volatile int userYaw;
 	private final EquipmentPreviewSway sway = new EquipmentPreviewSway();
+	@Nullable
+	private EquipmentPreviewPose currentPose;
+	private long poseStartNanos;
+	@Nullable
+	private Animation cachedAnimation;
+	private int cachedAnimationId = -1;
+	private float[] blendX = new float[0];
+	private float[] blendY = new float[0];
+	private float[] blendZ = new float[0];
 	private int dragStartX;
 	private int dragStartYaw;
 	private boolean dragging;
@@ -143,7 +161,9 @@ public class EquipmentPreviewRenderer {
 	private final MouseAdapter dragRotation = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
-			Rectangle bounds = previewBounds;
+			if (poseMenu.mousePressed(e))
+				return e;
+			Rectangle bounds = poseMenu.modelBounds();
 			if (bounds == null || !bounds.contains(e.getPoint()))
 				return e;
 			dragging = true;
@@ -166,11 +186,17 @@ public class EquipmentPreviewRenderer {
 
 		@Override
 		public MouseEvent mouseReleased(MouseEvent e) {
-			if (!dragging)
+			if (poseMenu.mouseReleased(e) || !dragging)
 				return e;
 			dragging = false;
 			sway.pause(System.nanoTime());
 			e.consume();
+			return e;
+		}
+
+		@Override
+		public MouseEvent mouseMoved(MouseEvent e) {
+			poseMenu.mouseMoved(e);
 			return e;
 		}
 	};
@@ -193,12 +219,17 @@ public class EquipmentPreviewRenderer {
 
 		eventBus.register(this);
 		mouseManager.registerMouseListener(dragRotation);
+		mouseManager.registerMouseWheelListener(poseMenu);
+		overlayManager.add(poseMenu);
 	}
 
 	public void destroy() {
+		overlayManager.remove(poseMenu);
+		mouseManager.unregisterMouseWheelListener(poseMenu);
 		mouseManager.unregisterMouseListener(dragRotation);
 		eventBus.unregister(this);
 		previewBounds = null;
+		poseMenu.setArea(null);
 		clientThread.invoke(this::restoreVanillaWidget);
 
 		destroyFbo();
@@ -232,6 +263,7 @@ public class EquipmentPreviewRenderer {
 
 		if (widget == null) {
 			previewBounds = null;
+			poseMenu.setArea(null);
 			return;
 		}
 
@@ -243,6 +275,7 @@ public class EquipmentPreviewRenderer {
 			log.info("Equipment preview area: {} (from {}), canvas {}x{}",
 				bounds, area != null ? "interface layout" : "model widget", client.getCanvasWidth(), client.getCanvasHeight());
 		previewBounds = bounds;
+		poseMenu.setArea(bounds);
 	}
 
 	private void restoreVanillaWidget() {
@@ -352,14 +385,14 @@ public class EquipmentPreviewRenderer {
 	 * Must be called after the scene and UI have been drawn for the current frame, with the default framebuffer bound.
 	 */
 	public void render() {
-		Rectangle bounds = previewBounds;
+		Rectangle bounds = previewBounds == null ? null : poseMenu.modelBounds();
 		int[] uiResolution = plugin.getUiResolution();
 		Player player = client.getLocalPlayer();
 		if (bounds == null || bounds.width <= 0 || bounds.height <= 0 || uiResolution == null || player == null ||
 			!previewSceneProgram.isValid() || !compositeProgram.isValid())
 			return;
 
-		Model model = player.getModel();
+		Model model = getPosedModel(player);
 		LocalPoint location = player.getLocalLocation();
 		if (model == null || location == null)
 			return;
@@ -382,11 +415,128 @@ public class EquipmentPreviewRenderer {
 		try {
 			overrideGlobalUniforms(width, height);
 			drawPreview(vao, drawRange, width, height);
-			composite(bounds, uiResolution, actualUiResolution);
+			composite(bounds, poseMenu.listBounds(), uiResolution, actualUiResolution);
 		} finally {
 			restoreGlobalUniforms();
 			restoreGlState(actualUiResolution);
 		}
+	}
+
+	/**
+	 * Builds the player's model in the pose picked from the dropdown.
+	 * <p>
+	 * There's no API for a player model without its animation, so this briefly swaps the player's pose animation
+	 * and frame, asks the client for the model, and swaps them back. The pose animation is used rather than the
+	 * action animation because setting the action animation fires {@link AnimationChanged} for other plugins.
+	 * A playing action animation, such as skilling, still takes priority over the pose, like it does in game.
+	 * <p>
+	 * The client smooths animations by how far the player is through their real frame, which means nothing for the
+	 * preview's frame. So the client's smoothing is turned off while the model is built, and when the Animation
+	 * Smoothing plugin would smooth this animation, the preview blends between frames itself.
+	 */
+	@Nullable
+	private Model getPosedModel(Player player) {
+		EquipmentPreviewPose pose = config.equipmentPreviewPose();
+		long now = System.nanoTime();
+		if (pose != currentPose) {
+			currentPose = pose;
+			poseStartNanos = now;
+		}
+
+		int animationId = poseAnimationId(player, pose);
+		Animation animation = animationId == -1 ? null : loadAnimation(animationId);
+		if (animation == null)
+			return player.getModel();
+
+		EquipmentPreviewAnimation.Position position = EquipmentPreviewAnimation.positionAt(
+			animation.isMayaAnim() ? null : animation.getFrameLengths(),
+			animation.getNumFrames(),
+			now - poseStartNanos
+		);
+		IntPredicate smoothingFilter = client.getAnimationInterpolationFilter();
+		boolean smooth = smoothingFilter != null && smoothingFilter.test(animationId) &&
+			position.nextFrame != position.frame && position.progress > 0;
+
+		int realAnimation = player.getPoseAnimation();
+		int realFrame = player.getPoseAnimationFrame();
+		client.setAnimationInterpolationFilter(null);
+		try {
+			player.setPoseAnimation(animationId);
+			if (!smooth)
+				return modelAtFrame(player, position.frame);
+
+			Model current = modelAtFrame(player, position.frame);
+			if (current == null)
+				return null;
+			int vertexCount = current.getVerticesCount();
+			copyVertices(current, vertexCount);
+			// The client reuses one model for animated players, so this can overwrite the first frame's model
+			Model next = modelAtFrame(player, position.nextFrame);
+			if (next == null || next.getVerticesCount() != vertexCount)
+				return modelAtFrame(player, position.frame);
+			blend(blendX, next.getVerticesX(), vertexCount, position.progress);
+			blend(blendY, next.getVerticesY(), vertexCount, position.progress);
+			blend(blendZ, next.getVerticesZ(), vertexCount, position.progress);
+			return next;
+		} finally {
+			player.setPoseAnimation(realAnimation);
+			player.setPoseAnimationFrame(realFrame);
+			client.setAnimationInterpolationFilter(smoothingFilter);
+		}
+	}
+
+	@Nullable
+	private static Model modelAtFrame(Player player, int frame) {
+		player.setPoseAnimationFrame(frame);
+		return player.getModel();
+	}
+
+	private void copyVertices(Model model, int vertexCount) {
+		if (blendX.length < vertexCount) {
+			blendX = new float[vertexCount];
+			blendY = new float[vertexCount];
+			blendZ = new float[vertexCount];
+		}
+		System.arraycopy(model.getVerticesX(), 0, blendX, 0, vertexCount);
+		System.arraycopy(model.getVerticesY(), 0, blendY, 0, vertexCount);
+		System.arraycopy(model.getVerticesZ(), 0, blendZ, 0, vertexCount);
+	}
+
+	/**
+	 * Moves each of the first count values in to from where it was in from, by the given fraction.
+	 */
+	static void blend(float[] from, float[] to, int count, float progress) {
+		for (int i = 0; i < count; i++)
+			to[i] = from[i] + (to[i] - from[i]) * progress;
+	}
+
+	/**
+	 * @return the animation to show for the pose, or -1 to show the player as they are in game
+	 */
+	private static int poseAnimationId(Player player, EquipmentPreviewPose pose) {
+		switch (pose.getKind()) {
+			case STAND:
+				return player.getIdlePoseAnimation();
+			case WALK:
+				return player.getWalkAnimation();
+			case RUN:
+				return player.getRunAnimation();
+			case EMOTE:
+				return pose.getEmoteAnimation();
+			default:
+				return -1;
+		}
+	}
+
+	@Nullable
+	private Animation loadAnimation(int animationId) {
+		if (animationId != cachedAnimationId) {
+			cachedAnimationId = animationId;
+			cachedAnimation = client.loadAnimation(animationId);
+			if (cachedAnimation == null)
+				log.warn("Equipment preview couldn't load animation {}", animationId);
+		}
+		return cachedAnimation;
 	}
 
 	/**
@@ -518,7 +668,7 @@ public class EquipmentPreviewRenderer {
 		glDisable(GL_DEPTH_TEST);
 	}
 
-	private void composite(Rectangle bounds, int[] uiResolution, int[] actualUiResolution) {
+	private void composite(Rectangle bounds, @Nullable Rectangle mask, int[] uiResolution, int[] actualUiResolution) {
 		glBindFramebuffer(GL_FRAMEBUFFER, plugin.awtContext.getFramebuffer(false));
 		glViewport(0, 0, actualUiResolution[0], actualUiResolution[1]);
 		// Leave the default framebuffer's alpha untouched, like the UI pass does
@@ -537,8 +687,26 @@ public class EquipmentPreviewRenderer {
 			(float) (bounds.x + bounds.width) / uiResolution[0] * 2 - 1,
 			1 - (float) bounds.y / uiResolution[1] * 2
 		);
+		compositeProgram.uniMaskRect.set(maskUv(bounds, mask));
 		glBindVertexArray(plugin.vaoTri);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	}
+
+	/**
+	 * Converts a canvas-space rectangle to the preview's texture coordinates, which have their origin at the bottom left.
+	 *
+	 * @return (minU, minV, maxU, maxV), empty if there's no mask or it doesn't overlap the preview
+	 */
+	static float[] maskUv(Rectangle bounds, @Nullable Rectangle mask) {
+		Rectangle overlap = mask == null ? null : bounds.intersection(mask);
+		if (overlap == null || overlap.isEmpty())
+			return new float[4];
+		return new float[] {
+			(float) (overlap.x - bounds.x) / bounds.width,
+			1 - (float) (overlap.y + overlap.height - bounds.y) / bounds.height,
+			(float) (overlap.x + overlap.width - bounds.x) / bounds.width,
+			1 - (float) (overlap.y - bounds.y) / bounds.height
+		};
 	}
 
 	/**
