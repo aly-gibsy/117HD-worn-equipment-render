@@ -21,6 +21,7 @@ The fork is named **117hd-equip-test**, with its own package (`rs117.hdequiptest
   | Setting | What it does |
   |---|---|
   | HD equipment preview | Turns the HD preview on or off |
+  | Rotate side to side | On by default; turns the character from side to side like the game's preview, pauses while you drag it and resumes 5 seconds after you let go |
   | Scene shadows | Off by default, because the shadow map comes from your in-world pose |
   | Zoom | Sets how large the character is drawn |
   | Show preview area | Debug tint of the box the preview is drawn into |

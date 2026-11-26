@@ -135,6 +135,7 @@ public class EquipmentPreviewRenderer {
 	@Nullable
 	private volatile Rectangle previewBounds;
 	private volatile int userYaw;
+	private final EquipmentPreviewSway sway = new EquipmentPreviewSway();
 	private int dragStartX;
 	private int dragStartYaw;
 	private boolean dragging;
@@ -148,6 +149,7 @@ public class EquipmentPreviewRenderer {
 			dragging = true;
 			dragStartX = e.getX();
 			dragStartYaw = userYaw;
+			sway.pause(System.nanoTime());
 			e.consume();
 			return e;
 		}
@@ -157,6 +159,7 @@ public class EquipmentPreviewRenderer {
 			if (!dragging)
 				return e;
 			userYaw = mod(dragStartYaw + (e.getX() - dragStartX) * DRAG_JAU_PER_PIXEL, 2048);
+			sway.pause(System.nanoTime());
 			e.consume();
 			return e;
 		}
@@ -166,6 +169,7 @@ public class EquipmentPreviewRenderer {
 			if (!dragging)
 				return e;
 			dragging = false;
+			sway.pause(System.nanoTime());
 			e.consume();
 			return e;
 		}
@@ -413,7 +417,7 @@ public class EquipmentPreviewRenderer {
 	private int[] uploadModel(DynamicModelVAO vao, Model model, float x, float y, float z) {
 		model.calculateBoundsCylinder();
 		ModelOverride modelOverride = ModelOverride.NONE;
-		int orientation = userYaw;
+		int orientation = mod(userYaw + sway.update(System.nanoTime(), config.equipmentPreviewSway()), 2048);
 
 		vao.map();
 		int[] drawRange = null;

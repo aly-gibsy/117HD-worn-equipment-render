@@ -1058,6 +1058,20 @@ public interface HdPluginConfig extends Config
 	@ConfigItem(keyName = KEY_HD_EQUIPMENT_PREVIEW, name = "", description = "")
 	void setHdEquipmentPreview(boolean enabled);
 
+	String KEY_EQUIPMENT_PREVIEW_SWAY = "equipmentPreviewSway";
+	@ConfigItem(
+		keyName = KEY_EQUIPMENT_PREVIEW_SWAY,
+		name = "Rotate side to side",
+		description =
+			"Slowly turn the character from side to side, like the game's own preview.<br>" +
+			"Dragging the preview pauses it, and it resumes 5 seconds after you let go.",
+		position = 1,
+		section = equipmentPreviewSettings
+	)
+	default boolean equipmentPreviewSway() {
+		return true;
+	}
+
 	String KEY_EQUIPMENT_PREVIEW_SHADOWS = "equipmentPreviewShadows";
 	@ConfigItem(
 		keyName = KEY_EQUIPMENT_PREVIEW_SHADOWS,
@@ -1066,7 +1080,7 @@ public interface HdPluginConfig extends Config
 			"Let shadows from the scene fall on the preview.<br>" +
 			"The shadow map is built from your character as it stands in the world, so the preview<br>" +
 			"may show its own shadow in the wrong place when it is rotated away from that pose.",
-		position = 1,
+		position = 2,
 		section = equipmentPreviewSettings
 	)
 	default boolean equipmentPreviewShadows() {
@@ -1080,7 +1094,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_EQUIPMENT_PREVIEW_ZOOM,
 		name = "Zoom",
 		description = "How large the character appears in the preview.",
-		position = 2,
+		position = 3,
 		section = equipmentPreviewSettings
 	)
 	default int equipmentPreviewZoom() {
@@ -1092,7 +1106,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_EQUIPMENT_PREVIEW_DEBUG_AREA,
 		name = "Show preview area",
 		description = "Tint the area the preview is drawn in, to help check its placement.",
-		position = 3,
+		position = 4,
 		section = equipmentPreviewSettings
 	)
 	default boolean equipmentPreviewDebugArea() {
