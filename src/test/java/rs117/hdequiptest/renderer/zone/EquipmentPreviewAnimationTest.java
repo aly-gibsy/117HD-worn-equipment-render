@@ -4,9 +4,13 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static rs117.hdequiptest.renderer.zone.EquipmentPreviewAnimation.CLIENT_TICK_NANOS;
-import static rs117.hdequiptest.renderer.zone.EquipmentPreviewAnimation.frameAt;
+import static rs117.hdequiptest.renderer.zone.EquipmentPreviewAnimation.positionAt;
 
 public class EquipmentPreviewAnimationTest {
+	private static int frameAt(int[] lengths, int numFrames, long nanos) {
+		return positionAt(lengths, numFrames, nanos).frame;
+	}
+
 	private static long ticks(long n) {
 		return n * CLIENT_TICK_NANOS;
 	}
@@ -40,5 +44,24 @@ public class EquipmentPreviewAnimationTest {
 		int[] lengths = { 1, 1 };
 		assertEquals(0, frameAt(lengths, 2, CLIENT_TICK_NANOS - 1));
 		assertEquals(0, frameAt(lengths, 2, -5));
+	}
+
+	@Test
+	public void progressesTowardsTheNextFrameAndWrapsAround() {
+		int[] lengths = { 2, 4 };
+		EquipmentPreviewAnimation.Position p = positionAt(lengths, 2, ticks(1));
+		assertEquals(0, p.frame);
+		assertEquals(1, p.nextFrame);
+		assertEquals(.5f, p.progress, 1e-6f);
+
+		p = positionAt(lengths, 2, ticks(5));
+		assertEquals(1, p.frame);
+		assertEquals("the last frame blends into the first", 0, p.nextFrame);
+		assertEquals(.75f, p.progress, 1e-6f);
+
+		p = positionAt(null, 4, ticks(3) + CLIENT_TICK_NANOS / 4);
+		assertEquals(3, p.frame);
+		assertEquals(0, p.nextFrame);
+		assertEquals(.25f, p.progress, 1e-6f);
 	}
 }

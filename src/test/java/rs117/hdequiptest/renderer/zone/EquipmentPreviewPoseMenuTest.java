@@ -54,4 +54,12 @@ public class EquipmentPreviewPoseMenuTest {
 		assertArrayEquals(new float[4], EquipmentPreviewRenderer.maskUv(bounds, null), 0);
 		assertArrayEquals(new float[4], EquipmentPreviewRenderer.maskUv(bounds, new Rectangle(200, 0, 10, 10)), 0);
 	}
+
+	@Test
+	public void blendsVerticesTowardsTheNextFrame() {
+		float[] from = { 0, 10, -4, 7 };
+		float[] to = { 10, 20, 4, 99 };
+		EquipmentPreviewRenderer.blend(from, to, 3, .25f);
+		assertArrayEquals(new float[] { 2.5f, 12.5f, -2, 99 }, to, 1e-6f);
+	}
 }

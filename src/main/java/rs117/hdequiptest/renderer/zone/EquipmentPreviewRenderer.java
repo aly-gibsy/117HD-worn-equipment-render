@@ -4,6 +4,7 @@ import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.nio.IntBuffer;
+import java.util.function.IntPredicate;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -150,6 +151,9 @@ public class EquipmentPreviewRenderer {
 	@Nullable
 	private Animation cachedAnimation;
 	private int cachedAnimationId = -1;
+	private float[] blendX = new float[0];
+	private float[] blendY = new float[0];
+	private float[] blendZ = new float[0];
 	private int dragStartX;
 	private int dragStartYaw;
 	private boolean dragging;
@@ -425,6 +429,10 @@ public class EquipmentPreviewRenderer {
 	 * and frame, asks the client for the model, and swaps them back. The pose animation is used rather than the
 	 * action animation because setting the action animation fires {@link AnimationChanged} for other plugins.
 	 * A playing action animation, such as skilling, still takes priority over the pose, like it does in game.
+	 * <p>
+	 * The client smooths animations by how far the player is through their real frame, which means nothing for the
+	 * preview's frame. So the client's smoothing is turned off while the model is built, and when the Animation
+	 * Smoothing plugin would smooth this animation, the preview blends between frames itself.
 	 */
 	@Nullable
 	private Model getPosedModel(Player player) {
@@ -440,21 +448,66 @@ public class EquipmentPreviewRenderer {
 		if (animation == null)
 			return player.getModel();
 
-		int frame = EquipmentPreviewAnimation.frameAt(
+		EquipmentPreviewAnimation.Position position = EquipmentPreviewAnimation.positionAt(
 			animation.isMayaAnim() ? null : animation.getFrameLengths(),
 			animation.getNumFrames(),
 			now - poseStartNanos
 		);
+		IntPredicate smoothingFilter = client.getAnimationInterpolationFilter();
+		boolean smooth = smoothingFilter != null && smoothingFilter.test(animationId) &&
+			position.nextFrame != position.frame && position.progress > 0;
+
 		int realAnimation = player.getPoseAnimation();
 		int realFrame = player.getPoseAnimationFrame();
-		player.setPoseAnimation(animationId);
-		player.setPoseAnimationFrame(frame);
+		client.setAnimationInterpolationFilter(null);
 		try {
-			return player.getModel();
+			player.setPoseAnimation(animationId);
+			if (!smooth)
+				return modelAtFrame(player, position.frame);
+
+			Model current = modelAtFrame(player, position.frame);
+			if (current == null)
+				return null;
+			int vertexCount = current.getVerticesCount();
+			copyVertices(current, vertexCount);
+			// The client reuses one model for animated players, so this can overwrite the first frame's model
+			Model next = modelAtFrame(player, position.nextFrame);
+			if (next == null || next.getVerticesCount() != vertexCount)
+				return modelAtFrame(player, position.frame);
+			blend(blendX, next.getVerticesX(), vertexCount, position.progress);
+			blend(blendY, next.getVerticesY(), vertexCount, position.progress);
+			blend(blendZ, next.getVerticesZ(), vertexCount, position.progress);
+			return next;
 		} finally {
 			player.setPoseAnimation(realAnimation);
 			player.setPoseAnimationFrame(realFrame);
+			client.setAnimationInterpolationFilter(smoothingFilter);
 		}
+	}
+
+	@Nullable
+	private static Model modelAtFrame(Player player, int frame) {
+		player.setPoseAnimationFrame(frame);
+		return player.getModel();
+	}
+
+	private void copyVertices(Model model, int vertexCount) {
+		if (blendX.length < vertexCount) {
+			blendX = new float[vertexCount];
+			blendY = new float[vertexCount];
+			blendZ = new float[vertexCount];
+		}
+		System.arraycopy(model.getVerticesX(), 0, blendX, 0, vertexCount);
+		System.arraycopy(model.getVerticesY(), 0, blendY, 0, vertexCount);
+		System.arraycopy(model.getVerticesZ(), 0, blendZ, 0, vertexCount);
+	}
+
+	/**
+	 * Moves each of the first count values in to from where it was in from, by the given fraction.
+	 */
+	static void blend(float[] from, float[] to, int count, float progress) {
+		for (int i = 0; i < count; i++)
+			to[i] = from[i] + (to[i] - from[i]) * progress;
 	}
 
 	/**
