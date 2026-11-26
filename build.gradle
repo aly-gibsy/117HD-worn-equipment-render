@@ -14,7 +14,7 @@ repositories {
 }
 
 def runeLiteVersion = '1.13.+'
-def pluginMainClass = 'rs117.hd.HdPluginTest'
+def pluginMainClass = 'rs117.hdequiptest.HdEquipTestPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
@@ -34,7 +34,7 @@ dependencies {
 def props = new Properties()
 file('runelite-plugin.properties').withInputStream { props.load(it) }
 
-group = 'rs117.hd'
+group = 'rs117.hdequiptest'
 version = props.getProperty('version')
 
 tasks.withType(JavaCompile).configureEach {

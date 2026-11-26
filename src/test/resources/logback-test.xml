@@ -21,12 +21,12 @@
     </encoder>
   </appender>
 
-  <logger name="rs117.hd" level="debug" additivity="false">
+  <logger name="rs117.hdequiptest" level="debug" additivity="false">
     <appender-ref ref="CONSOLE"/>
     <appender-ref ref="117HD_LOG"/>
   </logger>
 
-  <logger name="rs117.hd.HdPluginTest" level="debug" additivity="false">
+  <logger name="rs117.hdequiptest.HdEquipTestPluginTest" level="debug" additivity="false">
     <appender-ref ref="117HD_LOG"/>
   </logger>
 
