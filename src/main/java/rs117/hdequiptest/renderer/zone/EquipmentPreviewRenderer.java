@@ -28,6 +28,7 @@ import rs117.hdequiptest.opengl.shader.SceneShaderProgram;
 import rs117.hdequiptest.opengl.shader.ShaderException;
 import rs117.hdequiptest.opengl.shader.ShaderIncludes;
 import rs117.hdequiptest.renderer.SkyRenderer;
+import rs117.hdequiptest.scene.EnvironmentManager;
 import rs117.hdequiptest.scene.model_overrides.ModelOverride;
 import rs117.hdequiptest.utils.Camera;
 import rs117.hdequiptest.utils.buffer.GLBuffer;
@@ -69,6 +70,11 @@ public class EquipmentPreviewRenderer {
 		InterfaceID.Equipment.SLOT7, InterfaceID.Equipment.SLOT9, InterfaceID.Equipment.SLOT10,
 		InterfaceID.Equipment.SLOT12, InterfaceID.Equipment.SLOT13
 	};
+	private static final int[] STAT_TEXTS = {
+		InterfaceID.Equipment.STAT_GROUP_TEXT0, InterfaceID.Equipment.STABATT, InterfaceID.Equipment.SLASHATT,
+		InterfaceID.Equipment.CRUSHATT, InterfaceID.Equipment.STAT_GROUP_TEXT6, InterfaceID.Equipment.STABDEF,
+		InterfaceID.Equipment.MELEESTRENGTH, InterfaceID.Equipment.PRAYER
+	};
 
 	@Inject
 	private Client client;
@@ -90,6 +96,9 @@ public class EquipmentPreviewRenderer {
 
 	@Inject
 	private SkyRenderer skyRenderer;
+
+	@Inject
+	private EnvironmentManager environmentManager;
 
 	@Inject
 	private EquipmentPreviewProgram compositeProgram;
@@ -219,7 +228,11 @@ public class EquipmentPreviewRenderer {
 		widget.setHidden(true);
 		hiddenWidget = widget;
 		Rectangle area = findPreviewArea();
-		previewBounds = area != null ? area : widget.getBounds();
+		Rectangle bounds = area != null ? area : widget.getBounds();
+		if (!bounds.equals(previewBounds))
+			log.info("Equipment preview area: {} (from {}), canvas {}x{}",
+				bounds, area != null ? "interface layout" : "model widget", client.getCanvasWidth(), client.getCanvasHeight());
+		previewBounds = bounds;
 	}
 
 	private void restoreVanillaWidget() {
@@ -231,31 +244,51 @@ public class EquipmentPreviewRenderer {
 	/**
 	 * The empty column between the equipment slots and the bonuses, where the vanilla model appears.
 	 * The model widget's own bounds don't match where the game draws the model, so they can't be used.
+	 * Each edge falls back to a share of the interface's width, so a changed layout still lands near the middle.
 	 *
-	 * @return the area in canvas coordinates, or null if the layout isn't recognized
+	 * @return the area in canvas coordinates, or null if the interface's bounds aren't known yet
 	 */
 	@Nullable
 	private Rectangle findPreviewArea() {
-		Widget contents = client.getWidget(InterfaceID.Equipment.CONTENTS);
-		Widget stats = client.getWidget(InterfaceID.Equipment.STAT_GROUP);
-		if (contents == null || stats == null || contents.isHidden() || stats.isHidden())
+		Rectangle frame = boundsOf(InterfaceID.Equipment.CONTENTS);
+		if (frame == null)
+			frame = boundsOf(InterfaceID.Equipment.UNIVERSE);
+		if (frame == null)
 			return null;
 
-		int slotsRight = Integer.MIN_VALUE;
+		int left = Integer.MIN_VALUE;
 		for (int slotId : EQUIPMENT_SLOTS) {
-			Widget slot = client.getWidget(slotId);
-			if (slot != null && !slot.isHidden()) {
-				Rectangle b = slot.getBounds();
-				slotsRight = Math.max(slotsRight, b.x + b.width);
-			}
+			Rectangle slot = boundsOf(slotId);
+			if (slot != null && frame.contains(slot))
+				left = Math.max(left, slot.x + slot.width);
 		}
+		if (left == Integer.MIN_VALUE)
+			left = frame.x + frame.width / 3;
 
-		Rectangle content = contents.getBounds();
-		int left = slotsRight == Integer.MIN_VALUE ? content.x : slotsRight;
-		int right = stats.getBounds().x;
-		if (right - left < MIN_PREVIEW_SIZE || content.height < MIN_PREVIEW_SIZE)
+		int right = Integer.MAX_VALUE;
+		for (int statId : STAT_TEXTS) {
+			Rectangle stat = boundsOf(statId);
+			if (stat != null && frame.contains(stat) && stat.x > left)
+				right = Math.min(right, stat.x);
+		}
+		if (right == Integer.MAX_VALUE)
+			right = frame.x + frame.width * 2 / 3;
+
+		if (right - left < MIN_PREVIEW_SIZE)
 			return null;
-		return new Rectangle(left, content.y, right - left, content.height);
+		return new Rectangle(left, frame.y, right - left, frame.height);
+	}
+
+	/**
+	 * @return the widget's canvas bounds, or null if it doesn't exist or hasn't been laid out
+	 */
+	@Nullable
+	private Rectangle boundsOf(int widgetId) {
+		Widget widget = client.getWidget(widgetId);
+		if (widget == null)
+			return null;
+		Rectangle bounds = widget.getBounds();
+		return bounds.width > 0 && bounds.height > 0 ? bounds : null;
 	}
 
 	@Nullable
@@ -408,6 +441,8 @@ public class EquipmentPreviewRenderer {
 		ubo.viewportSize.set(width, height);
 		if (!config.equipmentPreviewShadows())
 			ubo.castsShadows.set(0);
+		// Ground fog thickens with distance from the camera, which would wash the far-away preview camera's view in fog color
+		ubo.groundFogOpacity.set(0f);
 		ubo.upload();
 	}
 
@@ -420,6 +455,7 @@ public class EquipmentPreviewRenderer {
 		if (plugin.sceneViewport != null)
 			ubo.viewportSize.set(slice(plugin.sceneViewport, 2));
 		ubo.castsShadows.set(skyRenderer.castsShadows ? 1 : 0);
+		ubo.groundFogOpacity.set(config.groundFog() ? environmentManager.getCurrentEnvironment().groundFogOpacity : 0);
 		ubo.upload();
 	}
 
@@ -427,7 +463,11 @@ public class EquipmentPreviewRenderer {
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glViewport(0, 0, width, height);
 		glColorMask(true, true, true, true);
-		glClearColor(0, 0, 0, 0);
+		if (config.equipmentPreviewDebugArea()) {
+			glClearColor(.25f, 0, .25f, .25f); // Premultiplied translucent magenta
+		} else {
+			glClearColor(0, 0, 0, 0);
+		}
 		glClearDepth(0); // Reverse-Z
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

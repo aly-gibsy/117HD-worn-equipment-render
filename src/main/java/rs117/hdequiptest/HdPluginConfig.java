@@ -1087,6 +1087,18 @@ public interface HdPluginConfig extends Config
 		return 100;
 	}
 
+	String KEY_EQUIPMENT_PREVIEW_DEBUG_AREA = "equipmentPreviewDebugArea";
+	@ConfigItem(
+		keyName = KEY_EQUIPMENT_PREVIEW_DEBUG_AREA,
+		name = "Show preview area",
+		description = "Tint the area the preview is drawn in, to help check its placement.",
+		position = 3,
+		section = equipmentPreviewSettings
+	)
+	default boolean equipmentPreviewDebugArea() {
+		return false;
+	}
+
 
 	/*====== Miscellaneous settings ======*/
 
