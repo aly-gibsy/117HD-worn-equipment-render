@@ -62,6 +62,13 @@ public class EquipmentPreviewRenderer {
 	private static final float CAMERA_PITCH = 0.08f; // Radians, slightly looking down like the vanilla preview
 	private static final float NEAR_PLANE = 50;
 	private static final int DRAG_JAU_PER_PIXEL = 4;
+	private static final int MIN_PREVIEW_SIZE = 32;
+	private static final int[] EQUIPMENT_SLOTS = {
+		InterfaceID.Equipment.SLOT0, InterfaceID.Equipment.SLOT1, InterfaceID.Equipment.SLOT2,
+		InterfaceID.Equipment.SLOT3, InterfaceID.Equipment.SLOT4, InterfaceID.Equipment.SLOT5,
+		InterfaceID.Equipment.SLOT7, InterfaceID.Equipment.SLOT9, InterfaceID.Equipment.SLOT10,
+		InterfaceID.Equipment.SLOT12, InterfaceID.Equipment.SLOT13
+	};
 
 	@Inject
 	private Client client;
@@ -106,10 +113,9 @@ public class EquipmentPreviewRenderer {
 	private int fboWidth;
 	private int fboHeight;
 
-	/** The vanilla model widget currently blanked by us, only touched on the client thread. */
+	/** The vanilla model widget currently hidden by us, only touched on the client thread. */
 	@Nullable
-	private Widget blankedWidget;
-	private int blankedModelType;
+	private Widget hiddenWidget;
 	/** Canvas-space bounds of the preview, or null when the interface isn't open. */
 	@Nullable
 	private volatile Rectangle previewBounds;
@@ -199,11 +205,10 @@ public class EquipmentPreviewRenderer {
 
 	@Subscribe
 	public void onBeforeRender(BeforeRender event) {
-		// Blank the vanilla model before the client draws the interface, so it never shows under ours.
-		// The widget is blanked rather than hidden, since the client stops updating a hidden widget's
-		// on-screen position, which left the preview drawn in the wrong place.
-		Widget widget = config.hdEquipmentPreview() ? findPreviewWidget() : null;
-		if (widget != blankedWidget)
+		// Hide the vanilla model before the client draws the interface, so it never shows under ours
+		Widget root = config.hdEquipmentPreview() ? client.getWidget(InterfaceID.Equipment.UNIVERSE) : null;
+		Widget widget = root == null || root.isHidden() ? null : findPlayerModel(root);
+		if (widget != hiddenWidget)
 			restoreVanillaWidget();
 
 		if (widget == null) {
@@ -211,43 +216,53 @@ public class EquipmentPreviewRenderer {
 			return;
 		}
 
-		if (widget.getModelType() != WidgetModelType.NULL) {
-			// Scripts may set the model again when equipment changes, so keep the latest type to restore
-			blankedModelType = widget.getModelType();
-			widget.setModelType(WidgetModelType.NULL);
-		}
-		blankedWidget = widget;
-		previewBounds = widget.getBounds();
+		widget.setHidden(true);
+		hiddenWidget = widget;
+		Rectangle area = findPreviewArea();
+		previewBounds = area != null ? area : widget.getBounds();
 	}
 
 	private void restoreVanillaWidget() {
-		if (blankedWidget != null)
-			blankedWidget.setModelType(blankedModelType);
-		blankedWidget = null;
+		if (hiddenWidget != null)
+			hiddenWidget.setHidden(false);
+		hiddenWidget = null;
 	}
 
+	/**
+	 * The empty column between the equipment slots and the bonuses, where the vanilla model appears.
+	 * The model widget's own bounds don't match where the game draws the model, so they can't be used.
+	 *
+	 * @return the area in canvas coordinates, or null if the layout isn't recognized
+	 */
 	@Nullable
-	private Widget findPreviewWidget() {
-		Widget root = client.getWidget(InterfaceID.Equipment.UNIVERSE);
-		if (root == null || root.isHidden())
+	private Rectangle findPreviewArea() {
+		Widget contents = client.getWidget(InterfaceID.Equipment.CONTENTS);
+		Widget stats = client.getWidget(InterfaceID.Equipment.STAT_GROUP);
+		if (contents == null || stats == null || contents.isHidden() || stats.isHidden())
 			return null;
-		// Once blanked, the widget no longer looks like a player model, so keep using it while it's shown
-		if (blankedWidget != null && !blankedWidget.isHidden() && isDescendant(blankedWidget, root))
-			return blankedWidget;
-		return findPlayerModel(root);
-	}
 
-	private static boolean isDescendant(Widget widget, Widget ancestor) {
-		for (Widget w = widget; w != null; w = w.getParent())
-			if (w.getId() == ancestor.getId())
-				return true;
-		return false;
+		int slotsRight = Integer.MIN_VALUE;
+		for (int slotId : EQUIPMENT_SLOTS) {
+			Widget slot = client.getWidget(slotId);
+			if (slot != null && !slot.isHidden()) {
+				Rectangle b = slot.getBounds();
+				slotsRight = Math.max(slotsRight, b.x + b.width);
+			}
+		}
+
+		Rectangle content = contents.getBounds();
+		int left = slotsRight == Integer.MIN_VALUE ? content.x : slotsRight;
+		int right = stats.getBounds().x;
+		if (right - left < MIN_PREVIEW_SIZE || content.height < MIN_PREVIEW_SIZE)
+			return null;
+		return new Rectangle(left, content.y, right - left, content.height);
 	}
 
 	@Nullable
-	private static Widget findPlayerModel(Widget widget) {
+	private Widget findPlayerModel(Widget widget) {
 		if (widget.getType() == WidgetType.MODEL && isPlayerModelType(widget.getModelType())) {
-			return widget.isHidden() ? null : widget;
+			// Skip models hidden by the game, but not the one we hid ourselves
+			return widget == hiddenWidget || !widget.isHidden() ? widget : null;
 		}
 
 		for (Widget[] children : new Widget[][] {
