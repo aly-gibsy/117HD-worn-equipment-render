@@ -1,0 +1,47 @@
+#pragma once
+
+#include <utils/misc.glsl>
+
+#include MATERIAL_COUNT
+
+struct Material {
+    int colorMap;
+    int normalMap;
+    int displacementMap;
+    int roughnessMap;
+    int ambientOcclusionMap;
+    int flowMap;
+    int shadowAlphaMap;
+    int flags; // voidShader << 3 | overrideBaseColor << 2 | unlit << 1 | hasTransparency
+    float subsurface;
+    float brightness;
+    float displacementScale;
+    float specularStrength;
+    float specularGloss;
+    float flowMapStrength;
+    vec2 flowMapDuration;
+    vec2 scrollDuration;
+    vec3 textureScale;
+};
+
+layout(std140) uniform UBOMaterials {
+    Material Array[MATERIAL_COUNT];
+} uboMaterials;
+
+#include MATERIAL_GETTER
+
+bool getMaterialIsVoidShader(const Material material) {
+    return (material.flags >> 3 & 1) == 1;
+}
+
+bool getMaterialShouldOverrideBaseColor(const Material material) {
+    return (material.flags >> 2 & 1) == 1;
+}
+
+int getMaterialIsUnlit(const Material material) {
+    return material.flags >> 1 & 1;
+}
+
+bool getMaterialHasTransparency(const Material material) {
+    return (material.flags & 1) == 1;
+}
